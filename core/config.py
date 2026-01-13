@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        # Allow extra environment variables that are not explicitly defined
+        # on the Settings model (e.g. POSTGRES_USER, SMTP_HOST, etc.).
+        # Without this, Pydantic raises `extra_forbidden` errors and the
+        # application fails to start when such variables are present.
+        extra = "ignore"
 
 
 settings = Settings()

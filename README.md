@@ -264,11 +264,11 @@ service_name/
 
 ### Adding a New Microservice
 
-1. Create a new directory under `apps/`
-2. Follow the structure of `auth_service` or `product_service`
-3. Update `docker-compose.yml` to include the new service
-4. Add service URL to `core/config.py`
-5. Update Nginx configuration if needed
+1. Create a new directory under `apps/`.
+2. Use the existing `apps/product_service` folder as a **reference/example** for how to structure a service (API, db, schemas, services, tasks, etc.).
+3. Copy that structure for your new service (e.g. `apps/order_service`) and rename modules/classes to fit your domain.
+4. Update `apps/main.py` (or `docker-compose.yml` if you later split services again) to include your new service’s routes.
+5. Update any related configuration (e.g. service URLs in `core/config.py`) if you introduce separate deployable services.
 
 ## 🔄 Database Migrations
 

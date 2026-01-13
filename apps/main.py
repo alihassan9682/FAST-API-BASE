@@ -1,0 +1,74 @@
+"""
+Single FastAPI application that combines auth and product services.
+"""
+import sys
+from pathlib import Path
+
+# Ensure project root is on sys.path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from core.config import settings
+from core.logger import logger
+from core.database import engine
+
+from apps.auth_service.api.v1.api import api_router as auth_api_router
+from apps.product_service.api.v1.api import api_router as product_api_router
+
+from apps.auth_service.db.base import Base as AuthBase
+from apps.product_service.db.base import Base as ProductBase
+
+
+# Create database tables for all services
+AuthBase.metadata.create_all(bind=engine)
+ProductBase.metadata.create_all(bind=engine)
+
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version=settings.PROJECT_VERSION,
+    description="Monolithic FastAPI application combining auth and product features.",
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount routers under a single API prefix
+app.include_router(auth_api_router, prefix=settings.API_V1_PREFIX)
+app.include_router(product_api_router, prefix=settings.API_V1_PREFIX)
+
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Unified application starting up...")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Unified application shutting down...")
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "monolith"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "apps.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+    )
+

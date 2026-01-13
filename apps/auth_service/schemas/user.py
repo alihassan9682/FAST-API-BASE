@@ -4,7 +4,7 @@ User schemas for request/response validation.
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from datetime import datetime
-from db.models.user import UserRole
+from apps.auth_service.db.models.user import UserRole
 
 
 class UserBase(BaseModel):
