@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: atb_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-atb_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atb_password}
+      POSTGRES_DB: ${POSTGRES_DB:-atb_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atb_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - atb_network
+
+  # Auth Service
+  auth_service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile
+    container_name: atb_auth_service
+    command: uvicorn apps.auth_service.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-atb_user}:${POSTGRES_PASSWORD:-atb_password}@postgres:5432/${POSTGRES_DB:-atb_db}
+      - SECRET_KEY=${SECRET_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../../:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - atb_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Product Service
+  product_service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile
+    container_name: atb_product_service
+    command: uvicorn apps.product_service.main:app --host 0.0.0.0 --port 8001 --reload
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-atb_user}:${POSTGRES_PASSWORD:-atb_password}@postgres:5432/${POSTGRES_DB:-atb_db}
+      - SECRET_KEY=${SECRET_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
+    ports:
+      - "8001:8001"
+    volumes:
+      - ../../:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - atb_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Nginx (Optional - for reverse proxy)
+  nginx:
+    image: nginx:alpine
+    container_name: atb_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth_service
+      - product_service
+    networks:
+      - atb_network
+
+volumes:
+  postgres_data:
+
+networks:
+  atb_network:
+    driver: bridge
