@@ -11,9 +11,27 @@ sys.path.insert(0, str(project_root))
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# Import settings first - this will fail if SECRET_KEY is missing or invalid
 from core.config import settings
 from core.logger import logger
 from core.database import engine
+
+# Additional validation at startup to ensure SECRET_KEY is valid
+if not hasattr(settings, 'SECRET_KEY') or not settings.SECRET_KEY or len(settings.SECRET_KEY.strip()) < 32:
+    import sys
+    print("\n" + "=" * 80)
+    print("❌ CRITICAL ERROR: SECRET_KEY is missing or invalid!")
+    print("=" * 80)
+    print("   The SECRET_KEY must be set in your .env file.")
+    print("   The application CANNOT run without a valid SECRET_KEY.")
+    print("   This is a security requirement for JWT token signing.\n")
+    print("   Requirements:")
+    print("   - SECRET_KEY must be present in .env file")
+    print("   - SECRET_KEY must be at least 32 characters long")
+    print("   - SECRET_KEY should be a secure random string\n")
+    print("   Please add or update SECRET_KEY in your .env file.")
+    print("=" * 80 + "\n")
+    sys.exit(1)
 
 from apps.auth_service.api.v1.api import api_router as auth_api_router
 from apps.product_service.api.v1.api import api_router as product_api_router

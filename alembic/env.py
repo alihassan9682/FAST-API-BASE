@@ -12,12 +12,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # Import base and models
-from core.database import Base
+from core.database import TimestampBase  # Use TimestampBase which includes audit fields
 from core.config import settings
 
 # Import all models here so Alembic can detect them
-from apps.auth_service.db.models.user import User
-from apps.product_service.db.models.product import Product
+# This ensures Alembic sees all model changes
+from apps.auth_service.db.models.user import User  # noqa: F401
+from apps.product_service.db.models.product import Product  # noqa: F401
 
 # this is the Alembic Config object
 config = context.config
@@ -29,8 +30,8 @@ config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-target_metadata = Base.metadata
+# Use TimestampBase metadata (includes audit fields from base class)
+target_metadata = TimestampBase.metadata
 
 
 def run_migrations_offline() -> None:

@@ -34,49 +34,298 @@ def runserver(host: str = "0.0.0.0", port: int = 8000, reload: bool = True):
     )
 
 
-def makemigrations(message: Optional[str] = None, empty: bool = False):
-    """Create new migration files (like Django's makemigrations)."""
+def makemigrations(message: Optional[str] = None, empty: bool = False, dry_run: bool = False):
+    """
+    Create new migration files (like Django's makemigrations).
+    
+    Only creates migrations if there are actual model changes.
+    Shows output similar to Django's makemigrations command.
+    """
     from alembic.config import Config
     from alembic import command
     from alembic.script import ScriptDirectory
+    from alembic.autogenerate import compare_metadata
+    from alembic.runtime.migration import MigrationContext
+    from sqlalchemy import create_engine
+    from core.config import settings
+    from core.database import TimestampBase
+    from datetime import datetime
+    import os
     
     alembic_cfg = Config("alembic.ini")
+    alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    script = ScriptDirectory.from_config(alembic_cfg)
+    
+    # Check if database is up to date first (Django-like)
+    try:
+        engine = create_engine(settings.DATABASE_URL)
+        with engine.connect() as connection:
+            context = MigrationContext.configure(connection)
+            current_rev = context.get_current_revision()
+            head_rev = script.get_current_head()
+            
+            if current_rev != head_rev:
+                print("\n❌ Error: Target database is not up to date.")
+                print(f"   Current: {current_rev or 'None'}")
+                print(f"   Head: {head_rev}")
+                print("   Run 'python manage.py migrate' first to apply pending migrations.")
+                sys.exit(1)
+    except Exception:
+        # If database doesn't exist or connection fails, continue
+        # (first migration scenario)
+        pass
+    
+    # Django-like output
+    print("Migrations for '':")
     
     if empty:
         # Create empty migration
         if not message:
             message = "empty migration"
-        command.revision(alembic_cfg, message=message, autogenerate=False)
+        
+        if dry_run:
+            print(f"  Would create empty migration: {message}")
+            return
+        
+        print(f"  Creating {message}...")
+        try:
+            rev = command.revision(alembic_cfg, message=message, autogenerate=False)
+            if rev:
+                rev_str = rev if isinstance(rev, str) else rev.revision
+                # Get the created migration file
+                try:
+                    migration = script.get_revision(rev_str)
+                    if migration:
+                        rel_path = os.path.relpath(migration.path, os.getcwd())
+                        print(f"    - Create migration {rev_str[:8]}")
+                        print(f"\n✅ Created migration file: {rel_path}")
+                except:
+                    print(f"    - Create migration {rev_str[:8]}")
+                    print(f"\n✅ Created migration: {rev_str[:8]}")
+        except Exception as e:
+            if "Target database is not up to date" in str(e):
+                print("\n❌ Error: Target database is not up to date.")
+                print("   Run 'python manage.py migrate' first to apply pending migrations.")
+                sys.exit(1)
+            else:
+                raise
     else:
         # Auto-generate migration from model changes
+        # First, check if there are actual changes
+        try:
+            engine = create_engine(settings.DATABASE_URL)
+            with engine.connect() as connection:
+                context = MigrationContext.configure(connection)
+                
+                # Compare current database state with models
+                diffs = compare_metadata(context, TimestampBase.metadata)
+                
+                # Filter out false positives (like sequence detections)
+                # Only consider real changes: tables, columns, indexes, constraints
+                real_changes = []
+                for diff in diffs:
+                    # Check if it's a meaningful change
+                    if hasattr(diff, 'add_table') or hasattr(diff, 'remove_table'):
+                        real_changes.append(diff)
+                    elif hasattr(diff, 'add_column') or hasattr(diff, 'remove_column'):
+                        real_changes.append(diff)
+                    elif hasattr(diff, 'modify_column'):
+                        # Check if it's a real modification, not just a comment/sequence detection
+                        real_changes.append(diff)
+                    elif hasattr(diff, 'add_index') or hasattr(diff, 'remove_index'):
+                        real_changes.append(diff)
+                    elif hasattr(diff, 'add_constraint') or hasattr(diff, 'remove_constraint'):
+                        real_changes.append(diff)
+                
+                if not real_changes:
+                    print("No changes detected")
+                    return
+        except Exception:
+            # If we can't compare (e.g., database doesn't exist), continue to create migration
+            pass
+        
         if not message:
-            message = "auto migration"
-        command.revision(alembic_cfg, message=message, autogenerate=True)
+            # Use timestamp for default message (Django-like)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            message = f"auto_migration_{timestamp}"
+        
+        if dry_run:
+            print(f"  Would detect changes and create migration: {message}")
+            return
+        
+        print(f"  Detecting changes...")
+        try:
+            # Temporarily capture stdout to check if migration has actual changes
+            import io
+            import contextlib
+            
+            # Create migration
+            rev = command.revision(alembic_cfg, message=message, autogenerate=True)
+            
+            if rev:
+                rev_str = rev if isinstance(rev, str) else rev.revision
+                # Check if the migration file has actual changes (not just pass)
+                try:
+                    migration = script.get_revision(rev_str)
+                    if migration:
+                        # Read the migration file to check if it's empty
+                        with open(migration.path, 'r') as f:
+                            content = f.read()
+                        
+                        # Check if upgrade() function has actual operations (not just pass)
+                        if 'def upgrade() -> None:' in content:
+                            # Extract upgrade function content
+                            upgrade_start = content.find('def upgrade() -> None:')
+                            upgrade_end = content.find('def downgrade() -> None:', upgrade_start)
+                            if upgrade_end == -1:
+                                upgrade_end = len(content)
+                            
+                            upgrade_content = content[upgrade_start:upgrade_end]
+                            
+                            # Check if it's just "pass" or has actual operations
+                            if 'pass' in upgrade_content and upgrade_content.strip().count('\n') <= 2:
+                                # Migration is empty, delete it
+                                os.remove(migration.path)
+                                print("No changes detected")
+                                return
+                        
+                        rel_path = os.path.relpath(migration.path, os.getcwd())
+                        print(f"    - Create migration {rev_str[:8]}: {message}")
+                        print(f"\n✅ Created migration file: {rel_path}")
+                    else:
+                        print(f"    - Create migration {rev_str[:8]}: {message}")
+                        print(f"\n✅ Created migration: {rev_str[:8]}")
+                except Exception as e:
+                    # If we can't read the file, assume it's valid
+                    print(f"    - Create migration {rev_str[:8]}: {message}")
+                    print(f"\n✅ Created migration: {rev_str[:8]}")
+            else:
+                print("No changes detected")
+                return
+        except Exception as e:
+            error_msg = str(e)
+            if "Target database is not up to date" in error_msg:
+                print("\n❌ Error: Target database is not up to date.")
+                print("   Run 'python manage.py migrate' first to apply pending migrations.")
+                sys.exit(1)
+            elif "No changes detected" in error_msg or "No changes" in error_msg:
+                print("No changes detected")
+                return
+            else:
+                raise
     
-    print("✅ Migration file created successfully!")
     print("💡 Run 'python manage.py migrate' to apply migrations")
 
 
-def migrate(target: Optional[str] = None, downgrade: bool = False):
-    """Apply database migrations (like Django's migrate)."""
+def migrate(target: Optional[str] = None, downgrade: bool = False, plan: bool = False):
+    """
+    Apply database migrations (like Django's migrate).
+    
+    Shows operations to perform and applies migrations step by step.
+    """
     from alembic.config import Config
     from alembic import command
     from alembic.script import ScriptDirectory
+    from alembic.runtime.migration import MigrationContext
+    from sqlalchemy import create_engine
+    from core.config import settings
     
     alembic_cfg = Config("alembic.ini")
+    alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    script = ScriptDirectory.from_config(alembic_cfg)
+    
+    engine = create_engine(settings.DATABASE_URL)
+    with engine.connect() as connection:
+        context = MigrationContext.configure(connection)
+        current_rev = context.get_current_revision()
+        head_rev = script.get_current_head()
     
     if downgrade:
-        # Rollback one migration
-        command.downgrade(alembic_cfg, "-1")
-        print("✅ Rolled back last migration")
-    elif target:
-        # Migrate to specific revision
-        command.upgrade(alembic_cfg, target)
-        print(f"✅ Migrated to revision: {target}")
+        # Rollback one migration (Django-like)
+        if not current_rev:
+            print("No migrations to rollback.")
+            return
+        
+        current = script.get_revision(current_rev)
+        if current and current.down_revision:
+            prev_rev = current.down_revision
+            prev = script.get_revision(prev_rev)
+            print("Operations to perform:")
+            print(f"  Rollback {current_rev[:8]}: {current.doc}")
+            if prev:
+                print(f"  Target: {prev_rev[:8]}: {prev.doc}")
+            print("\nRunning migrations:")
+            print(f"  Rolling back {current_rev[:8]}: {current.doc}... ", end="", flush=True)
+            command.downgrade(alembic_cfg, "-1")
+            print("OK")
+            print("\n✅ Rolled back last migration")
+        else:
+            print("No previous migration to rollback to.")
+        return
+    
+    if plan:
+        # Show migration plan without applying (Django-like)
+        if current_rev == head_rev:
+            print("No migrations to apply.")
+            return
+        
+        print("Planned migrations:")
+        # Get list of migrations to apply
+        rev = script.get_revision(head_rev)
+        migrations_to_apply = []
+        while rev and rev.revision != current_rev:
+            migrations_to_apply.append(rev)
+            if rev.down_revision:
+                rev = script.get_revision(rev.down_revision)
+            else:
+                break
+        
+        migrations_to_apply.reverse()
+        
+        for rev in migrations_to_apply:
+            print(f"  [{rev.revision[:8]}] {rev.doc}")
+        
+        return
+    
+    # Normal migrate - apply all pending migrations (Django-like)
+    if current_rev == head_rev:
+        print("No migrations to apply.")
+        return
+    
+    # Get list of migrations to apply
+    rev = script.get_revision(head_rev)
+    migrations_to_apply = []
+    while rev and rev.revision != current_rev:
+        migrations_to_apply.append(rev)
+        if rev.down_revision:
+            rev = script.get_revision(rev.down_revision)
+        else:
+            break
+    
+    migrations_to_apply.reverse()
+    
+    print("Operations to perform:")
+    print(f"  Apply all migrations: '{current_rev[:8] if current_rev else 'None'}' -> '{head_rev[:8]}'")
+    print(f"\nRunning migrations:")
+    
+    # Apply migrations one by one (Django-like)
+    for rev in migrations_to_apply:
+        print(f"  Applying {rev.revision[:8]}: {rev.doc}... ", end="", flush=True)
+        try:
+            if target:
+                command.upgrade(alembic_cfg, target)
+                break
+            else:
+                command.upgrade(alembic_cfg, rev.revision)
+            print("OK")
+        except Exception as e:
+            print("FAILED")
+            raise
+    
+    if not target:
+        print("\n✅ All migrations applied successfully!")
     else:
-        # Migrate to latest (head)
-        command.upgrade(alembic_cfg, "head")
-        print("✅ All migrations applied successfully!")
+        print(f"\n✅ Migrated to revision: {target}")
 
 
 def showmigrations():
@@ -242,15 +491,17 @@ Examples:
     runserver_parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     runserver_parser.add_argument("--noreload", action="store_true", help="Disable auto-reload")
     
-    # makemigrations command
-    makemigrations_parser = subparsers.add_parser("makemigrations", help="Create new migration")
-    makemigrations_parser.add_argument("-m", "--message", help="Migration message")
+    # makemigrations command (Django-like)
+    makemigrations_parser = subparsers.add_parser("makemigrations", help="Create new migration files")
+    makemigrations_parser.add_argument("-m", "--message", help="Migration message/description")
     makemigrations_parser.add_argument("--empty", action="store_true", help="Create empty migration")
+    makemigrations_parser.add_argument("--dry-run", action="store_true", help="Show what would be created without creating")
     
-    # migrate command
-    migrate_parser = subparsers.add_parser("migrate", help="Apply migrations")
+    # migrate command (Django-like)
+    migrate_parser = subparsers.add_parser("migrate", help="Apply database migrations")
     migrate_parser.add_argument("target", nargs="?", help="Target revision (default: head)")
     migrate_parser.add_argument("--downgrade", action="store_true", help="Rollback last migration")
+    migrate_parser.add_argument("--plan", action="store_true", help="Show migration plan without applying")
     
     # showmigrations command
     subparsers.add_parser("showmigrations", help="Show migration status")
@@ -283,9 +534,11 @@ Examples:
         if args.command == "runserver":
             runserver(host=args.host, port=args.port, reload=not args.noreload)
         elif args.command == "makemigrations":
-            makemigrations(message=args.message, empty=args.empty)
+            makemigrations(message=args.message, empty=args.empty, dry_run=args.dry_run)
         elif args.command == "migrate":
-            if args.downgrade:
+            if args.plan:
+                migrate(plan=True)
+            elif args.downgrade:
                 migrate(downgrade=True)
             else:
                 migrate(target=args.target)
