@@ -1,33 +1,18 @@
-"""
-Core database configuration and session management.
-"""
 from datetime import datetime
 from typing import Any, Dict, Optional
-from sqlalchemy import create_engine, Column, DateTime, Integer, Boolean, func
+from sqlalchemy import Column, DateTime, Integer, func
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session
 from sqlalchemy.sql import expression
-from core.config import settings
 
-# Create database engine
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    pool_pre_ping=True,
-    echo=False
-)
-
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Custom base class with common functionality
+# Create a base class that can be used across all services
 class CustomBase:
     """Base class with common attributes and methods for all models."""
     
     @declared_attr
     def __tablename__(cls) -> str:
         """Generate table name automatically from class name."""
+        # Convert CamelCase to snake_case for table names
         import re
         name = re.sub(r'(?<!^)(?=[A-Z])', '_', cls.__name__).lower()
         if name.endswith('y'):
@@ -61,7 +46,7 @@ class CustomBase:
         db.commit()
         db.refresh(self)
 
-# Timestamp mixin class
+# Create base class with timestamps
 class TimestampMixin:
     """Mixin class that adds created_at and updated_at timestamps."""
     
@@ -69,7 +54,7 @@ class TimestampMixin:
         DateTime(timezone=True),
         server_default=func.now(),  # Uses database server time
         nullable=False,
-        index=True,
+        index=True,  # Added index for better query performance
         comment="Timestamp when the record was created"
     )
     
@@ -78,22 +63,9 @@ class TimestampMixin:
         server_default=func.now(),
         onupdate=func.now(),  # Automatically updates on record modification
         nullable=False,
-        index=True,
+        index=True,  # Added index for better query performance
         comment="Timestamp when the record was last updated"
     )
-    
-    @property
-    def age_in_days(self) -> Optional[float]:
-        """Return the age of the record in days."""
-        if self.created_at:
-            from datetime import datetime
-            delta = datetime.utcnow() - self.created_at
-            return delta.total_seconds() / 86400  # seconds in a day
-        return None
-
-# Soft delete mixin class
-class SoftDeleteMixin:
-    """Mixin for models that support soft deletion."""
     
     deleted_at = Column(
         DateTime(timezone=True),
@@ -102,25 +74,15 @@ class SoftDeleteMixin:
         comment="Timestamp when the record was soft deleted (null if not deleted)"
     )
     
-    is_active = Column(
-        Boolean,
-        default=True,
-        nullable=False,
-        server_default=expression.true(),
-        comment="Flag indicating if the record is active"
-    )
-    
     def soft_delete(self, db: Session) -> None:
         """Soft delete the record by setting deleted_at timestamp."""
         self.deleted_at = func.now()
-        self.is_active = False
         db.commit()
         db.refresh(self)
     
     def restore(self, db: Session) -> None:
         """Restore a soft-deleted record."""
         self.deleted_at = None
-        self.is_active = True
         db.commit()
         db.refresh(self)
     
@@ -129,59 +91,23 @@ class SoftDeleteMixin:
         """Check if record is soft deleted."""
         return self.deleted_at is not None
 
-# Create multiple base classes for different needs
-Base = declarative_base(cls=CustomBase)
+# Create base class for models that should be soft deletable
+class SoftDeleteMixin:
+    """Mixin for models that support soft deletion."""
+    
+    is_active = Column(
+        Boolean,
+        default=True,
+        nullable=False,
+        server_default=expression.true(),
+        comment="Flag indicating if the record is active (not soft deleted)"
+    )
 
-# Timestamp base (for models that need automatic timestamps)
+# Create different base classes for different needs
+Base = declarative_base(cls=CustomBase)
 TimestampBase = declarative_base(cls=CustomBase)
 TimestampBase.__bases__ = (TimestampMixin, CustomBase)
 
-# Soft delete with timestamps base
+# For soft deletable models with timestamps
 SoftDeleteTimestampBase = declarative_base(cls=CustomBase)
 SoftDeleteTimestampBase.__bases__ = (TimestampMixin, SoftDeleteMixin, CustomBase)
-
-
-def get_db():
-    """
-    Dependency function to get database session.
-    Use this in FastAPI route dependencies.
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-# Helper function for time-series queries
-def get_time_series_query(model, db: Session, days: int = 30, date_column: str = "created_at"):
-    """
-    Get time-series data for a model.
-    
-    Args:
-        model: SQLAlchemy model class
-        db: Database session
-        days: Number of days to look back
-        date_column: Name of the timestamp column to use
-    
-    Returns:
-        Query object filtered by time range
-    """
-    from datetime import datetime, timedelta
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
-    column = getattr(model, date_column)
-    return db.query(model).filter(column >= cutoff_date)
-
-
-__all__ = [
-    "engine",
-    "SessionLocal",
-    "get_db",
-    "Base",
-    "TimestampBase",
-    "SoftDeleteTimestampBase",
-    "TimestampMixin",
-    "SoftDeleteMixin",
-    "CustomBase",
-    "get_time_series_query",
-]
