@@ -211,23 +211,33 @@ pytest tests/ -v
 ## 📦 Available Make Commands
 
 ```bash
-make help              # Show all available commands
-make install           # Install dependencies
-make dev-up           # Start development environment
-make dev-down         # Stop development environment
-make build            # Build Docker images
-make up               # Start all services
-make down             # Stop all services
-make logs             # View service logs
-make clean            # Clean up Docker volumes
-make test             # Run tests
-make migrate          # Create new migration (use: make migrate msg="description")
-make migrate-upgrade  # Apply migrations
-make migrate-downgrade # Rollback last migration
-make format           # Format code with black
-make lint             # Lint code with flake8
-make run-auth         # Run auth service locally
-make run-product      # Run product service locally
+make help                 # Show all available commands
+make install              # Install dependencies
+make dev-up              # Start development environment
+make dev-down            # Stop development environment
+make build               # Build Docker images
+make up                  # Start all services
+make down                # Stop all services
+make logs                # View service logs
+make clean               # Clean up Docker volumes
+make test                # Run tests
+
+# Migration commands (Django-like)
+make makemigrations msg="description"  # Create new migration
+make migrate                           # Apply all pending migrations
+make migrate-check                     # Check for pending migrations
+make migrate-show                      # Show all migrations and status
+make migrate-rollback                  # Rollback last migration
+make migrate-history                   # Show migration history
+make migrate-current                   # Show current migration
+
+# Code quality
+make format              # Format code with black
+make lint                # Lint code with flake8
+
+# Run services locally
+make run-auth            # Run auth service locally
+make run-product         # Run product service locally
 ```
 
 ## 🏗️ Project Structure
@@ -272,29 +282,81 @@ service_name/
 
 ## 🔄 Database Migrations
 
-### Create a Migration
+This project uses **Alembic** with a **Django-like** interface for easy migration management.
+
+### Quick Start
 
 ```bash
-make migrate msg="Add new table"
-# Or manually:
-alembic revision --autogenerate -m "Add new table"
+# Check for pending migrations
+python scripts/migrate.py check
+
+# Show all migrations and their status
+python scripts/migrate.py showmigrations
+
+# Create a new migration (auto-detects model changes)
+python scripts/migrate.py makemigrations -m "add user profile"
+
+# Apply migrations
+python scripts/migrate.py migrate
 ```
 
-### Apply Migrations
+### Available Commands
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `makemigrations` | Create new migration (auto-detect changes) | `python scripts/migrate.py makemigrations -m "add email field"` |
+| `migrate` | Apply all pending migrations | `python scripts/migrate.py migrate` |
+| `showmigrations` | Show all migrations and their status | `python scripts/migrate.py showmigrations` |
+| `check` | Check for pending migrations | `python scripts/migrate.py check` |
+| `rollback` | Rollback migrations | `python scripts/migrate.py rollback -s 2` |
+| `history` | Show migration history | `python scripts/migrate.py history` |
+| `current` | Show current migration | `python scripts/migrate.py current` |
+
+### Using Make Commands
 
 ```bash
-make migrate-upgrade
-# Or manually:
-alembic upgrade head
+make makemigrations msg="add user profile"
+make migrate
+make migrate-check
+make migrate-show
+make migrate-rollback
+make migrate-history
+make migrate-current
 ```
 
-### Rollback Migration
+### Daily Workflow
 
+**Starting work:**
 ```bash
-make migrate-downgrade
-# Or manually:
-alembic downgrade -1
+git pull
+python scripts/migrate.py check
+python scripts/migrate.py migrate  # if needed
 ```
+
+**After model changes:**
+```bash
+python scripts/migrate.py makemigrations -m "what you changed"
+python scripts/migrate.py migrate
+git add alembic/versions/
+git commit -m "Add migration: what you changed"
+```
+
+### Automatic Migration Checking
+
+The application automatically checks for pending migrations on startup and warns you if any are found. This ensures all developers are working with the same database schema.
+
+### Migration Files
+
+Migration files are automatically named with timestamps for easy tracking:
+```
+20260113_1724-abc123def456_add_user_email_field.py
+```
+
+### Documentation
+
+For comprehensive migration documentation, see:
+- **Full Guide**: [docs/MIGRATIONS.md](docs/MIGRATIONS.md)
+- **Quick Reference**: [docs/MIGRATIONS_QUICK_REF.md](docs/MIGRATIONS_QUICK_REF.md)
 
 ## 🐳 Docker
 

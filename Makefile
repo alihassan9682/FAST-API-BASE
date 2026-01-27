@@ -34,14 +34,26 @@ clean: ## Clean up Docker volumes and containers
 test: ## Run tests
 	pytest tests/ -v
 
-migrate: ## Create a new migration
-	alembic revision --autogenerate -m "$(msg)"
+makemigrations: ## Create a new migration (auto-detect changes)
+	python scripts/migrate.py makemigrations -m "$(msg)"
 
-migrate-upgrade: ## Apply migrations
-	alembic upgrade head
+migrate: ## Apply all pending migrations
+	python scripts/migrate.py migrate
 
-migrate-downgrade: ## Rollback last migration
-	alembic downgrade -1
+migrate-check: ## Check for pending migrations
+	python scripts/migrate.py check
+
+migrate-show: ## Show all migrations and their status
+	python scripts/migrate.py showmigrations
+
+migrate-rollback: ## Rollback last migration
+	python scripts/migrate.py rollback
+
+migrate-history: ## Show migration history
+	python scripts/migrate.py history
+
+migrate-current: ## Show current migration
+	python scripts/migrate.py current
 
 format: ## Format code with black
 	black .

@@ -47,9 +47,14 @@ app.include_router(auth_api_router, prefix=settings.API_V1_PREFIX)
 app.include_router(product_api_router, prefix=settings.API_V1_PREFIX)
 
 
+from scripts.check_migrations import check_migrations_on_startup
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Unified application starting up...")
+    # Check for pending migrations (warning only, doesn't stop startup)
+    check_migrations_on_startup(strict=False)
 
 
 @app.on_event("shutdown")
