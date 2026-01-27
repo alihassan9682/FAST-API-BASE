@@ -8,8 +8,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum
-from sqlalchemy.sql import func
+from sqlalchemy import Column, Integer, String, Boolean, Enum
 import enum
 from apps.auth_service.db.base import Base
 
@@ -22,10 +21,19 @@ class UserRole(str, enum.Enum):
 
 
 class User(Base):
-    """User model."""
+    """
+    User model with automatic audit fields (created_at, updated_at).
+    
+    Inherits from TimestampBase which automatically provides:
+    - id: Primary key
+    - created_at: Timestamp when user was created (for audit logging)
+    - updated_at: Timestamp when user was last updated (for audit logging)
+    
+    These fields are essential for timeseries algorithms to rank/match users.
+    """
     __tablename__ = "users"
     
-    id = Column(Integer, primary_key=True, index=True)
+    # Note: id, created_at, and updated_at are automatically included from TimestampBase
     email = Column(String, unique=True, index=True, nullable=False)
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
@@ -33,8 +41,6 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
     role = Column(Enum(UserRole), default=UserRole.USER)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email}, username={self.username})>"

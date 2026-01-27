@@ -61,34 +61,50 @@ class CustomBase:
         db.commit()
         db.refresh(self)
 
-# Timestamp mixin class
+# Audit/Timestamp mixin class for audit logging and timeseries support
 class TimestampMixin:
-    """Mixin class that adds created_at and updated_at timestamps."""
+    """
+    Mixin class that adds created_at and updated_at timestamps.
+    
+    This mixin is essential for:
+    - Audit logging: Track when records are created/modified
+    - Timeseries algorithms: Rank and match users based on temporal data
+    - Data analytics: Analyze trends over time
+    
+    All models should inherit from TimestampBase to automatically get these fields.
+    """
     
     created_at = Column(
         DateTime(timezone=True),
-        server_default=func.now(),  # Uses database server time
+        server_default=func.now(),
         nullable=False,
         index=True,
-        comment="Timestamp when the record was created"
+        comment="Timestamp when the record was created (for audit logging and timeseries)"
     )
     
     updated_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
-        onupdate=func.now(),  # Automatically updates on record modification
+        onupdate=func.now(),
         nullable=False,
         index=True,
-        comment="Timestamp when the record was last updated"
+        comment="Timestamp when the record was last updated (for audit logging and timeseries)"
     )
     
     @property
     def age_in_days(self) -> Optional[float]:
-        """Return the age of the record in days."""
+        """Return the age of the record in days (useful for timeseries algorithms)."""
         if self.created_at:
-            from datetime import datetime
             delta = datetime.utcnow() - self.created_at
             return delta.total_seconds() / 86400  # seconds in a day
+        return None
+    
+    @property
+    def age_in_hours(self) -> Optional[float]:
+        """Return the age of the record in hours (useful for timeseries algorithms)."""
+        if self.created_at:
+            delta = datetime.utcnow() - self.created_at
+            return delta.total_seconds() / 3600  # seconds in an hour
         return None
 
 # Soft delete mixin class
@@ -129,16 +145,60 @@ class SoftDeleteMixin:
         """Check if record is soft deleted."""
         return self.deleted_at is not None
 
-# Create multiple base classes for different needs
+# Create base class without timestamps (for special cases only)
 Base = declarative_base(cls=CustomBase)
 
-# Timestamp base (for models that need automatic timestamps)
-TimestampBase = declarative_base(cls=CustomBase)
-TimestampBase.__bases__ = (TimestampMixin, CustomBase)
+# Audit Base Class - RECOMMENDED for all models
+# This combines CustomBase and TimestampMixin properly for SQLAlchemy
+class AuditBase(CustomBase, TimestampMixin):
+    """
+    Base class for all models that need audit logging and timeseries support.
+    
+    Automatically includes:
+    - id: Primary key
+    - created_at: Timestamp when record was created (indexed, for audit logging)
+    - updated_at: Timestamp when record was last updated (indexed, for audit logging)
+    
+    These fields are essential for:
+    - Audit logging: Track when records are created/modified
+    - Timeseries algorithms: Rank and match users based on temporal data
+    - Data analytics: Analyze trends over time
+    
+    Usage:
+        from apps.your_service.db.base import Base  # This is TimestampBase
+        
+        class MyModel(Base):
+            __tablename__ = "my_table"
+            name = Column(String, nullable=False)
+            # created_at and updated_at are automatically included!
+    """
+    __abstract__ = True
 
-# Soft delete with timestamps base
-SoftDeleteTimestampBase = declarative_base(cls=CustomBase)
-SoftDeleteTimestampBase.__bases__ = (TimestampMixin, SoftDeleteMixin, CustomBase)
+# Create declarative base with audit fields - RECOMMENDED for all models
+TimestampBase = declarative_base(cls=AuditBase)
+
+# Soft delete with timestamps base (for models that need soft deletion)
+class SoftDeleteAuditBase(CustomBase, TimestampMixin, SoftDeleteMixin):
+    """
+    Base class for models that need both audit logging and soft deletion.
+    
+    Automatically includes:
+    - id: Primary key
+    - created_at: Timestamp when record was created
+    - updated_at: Timestamp when record was last updated
+    - deleted_at: Timestamp when record was soft deleted (nullable)
+    - is_active: Boolean flag for active status
+    
+    Usage:
+        from core.database import SoftDeleteTimestampBase
+        
+        class MyModel(SoftDeleteTimestampBase):
+            __tablename__ = "my_table"
+            name = Column(String, nullable=False)
+    """
+    __abstract__ = True
+
+SoftDeleteTimestampBase = declarative_base(cls=SoftDeleteAuditBase)
 
 
 def get_db():
@@ -178,10 +238,12 @@ __all__ = [
     "SessionLocal",
     "get_db",
     "Base",
-    "TimestampBase",
-    "SoftDeleteTimestampBase",
-    "TimestampMixin",
-    "SoftDeleteMixin",
-    "CustomBase",
-    "get_time_series_query",
+    "TimestampBase",  # Recommended: Use this for all models (includes audit fields)
+    "SoftDeleteTimestampBase",  # Use this for models that need soft deletion
+    "AuditBase",  # Abstract base class with audit fields
+    "SoftDeleteAuditBase",  # Abstract base class with audit + soft delete
+    "TimestampMixin",  # Mixin for adding timestamps to custom bases
+    "SoftDeleteMixin",  # Mixin for adding soft delete functionality
+    "CustomBase",  # Base class with common methods
+    "get_time_series_query",  # Helper for timeseries queries
 ]
