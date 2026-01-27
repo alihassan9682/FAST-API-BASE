@@ -2,7 +2,9 @@
 Core configuration module for shared settings across all microservices.
 """
 from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
 from typing import Optional
+import sys
 
 
 class Settings(BaseSettings):
@@ -18,11 +20,22 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
     
-    # Security
-    SECRET_KEY: str
+    # Security - REQUIRED: Must be set in .env file
+    SECRET_KEY: str = Field(..., min_length=32, description="Required secret key for JWT token signing")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
+    @field_validator('SECRET_KEY')
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        """Validate SECRET_KEY is set and has minimum length."""
+        if not v or len(v.strip()) < 32:
+            print("\n❌ ERROR: SECRET_KEY is required and must be at least 32 characters long!")
+            print("   Please set SECRET_KEY in your .env file.")
+            print("   The project cannot run without a valid SECRET_KEY.\n")
+            sys.exit(1)
+        return v.strip()
     
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000"

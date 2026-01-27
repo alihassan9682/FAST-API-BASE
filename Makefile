@@ -1,4 +1,4 @@
-.PHONY: help install dev-up dev-down build up down logs clean test migrate migrate-upgrade migrate-downgrade format lint
+.PHONY: help install dev-up dev-down build up down logs clean test runserver makemigrations migrate migrate-check migrate-show migrate-rollback migrate-history migrate-current format lint shell
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -32,31 +32,46 @@ clean: ## Clean up Docker volumes and containers
 	docker system prune -f
 
 test: ## Run tests
-	pytest tests/ -v
+	python manage.py test
 
-makemigrations: ## Create a new migration (auto-detect changes)
-	python scripts/migrate.py makemigrations -m "$(msg)"
+runserver: ## Start development server (Django-like)
+	python manage.py runserver
 
-migrate: ## Apply all pending migrations
-	python scripts/migrate.py migrate
+runserver-port: ## Start development server on custom port (usage: make runserver-port PORT=8080)
+	python manage.py runserver --port $(PORT)
+
+makemigrations: ## Create new migration (Django-like, usage: make makemigrations msg="description")
+	python manage.py makemigrations -m "$(msg)"
+
+makemigrations-empty: ## Create empty migration (usage: make makemigrations-empty msg="description")
+	python manage.py makemigrations --empty -m "$(msg)"
+
+migrate: ## Apply all pending migrations (Django-like)
+	python manage.py migrate
 
 migrate-check: ## Check for pending migrations
-	python scripts/migrate.py check
+	python manage.py migrate-check
 
-migrate-show: ## Show all migrations and their status
-	python scripts/migrate.py showmigrations
+migrate-show: ## Show all migrations and their status (Django-like)
+	python manage.py showmigrations
 
 migrate-rollback: ## Rollback last migration
-	python scripts/migrate.py rollback
+	python manage.py migrate --downgrade
 
 migrate-history: ## Show migration history
-	python scripts/migrate.py history
+	python manage.py migrate-history
 
 migrate-current: ## Show current migration
-	python scripts/migrate.py current
+	python manage.py migrate-current
+
+shell: ## Start Python shell with database (Django-like)
+	python manage.py shell
 
 format: ## Format code with black
 	black .
+
+lint: ## Lint code with flake8
+	flake8 .
 
 lint: ## Lint code with flake8
 	flake8 .

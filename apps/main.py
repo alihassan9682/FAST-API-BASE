@@ -21,10 +21,12 @@ from apps.product_service.api.v1.api import api_router as product_api_router
 from apps.auth_service.db.base import Base as AuthBase
 from apps.product_service.db.base import Base as ProductBase
 
+# Import all models to ensure they're registered with their bases
+from apps.auth_service.db.models.user import User  # noqa
+from apps.product_service.db.models.product import Product  # noqa
 
-# Create database tables for all services
-AuthBase.metadata.create_all(bind=engine)
-ProductBase.metadata.create_all(bind=engine)
+# Note: We don't create tables here anymore - use migrations instead
+# Base.metadata.create_all(bind=engine)  # Disabled - use 'python manage.py migrate'
 
 
 app = FastAPI(

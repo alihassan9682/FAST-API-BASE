@@ -21,7 +21,7 @@ services:
     networks:
       - atb_network
 
-  # Single unified FastAPI application (auth + product)
+  # Single unified FastAPI application (all services on one port)
   app:
     build:
       context: ../..
@@ -29,7 +29,7 @@ services:
     container_name: atb_app
     env_file:
       - ../../.env  # Load .env from project root
-    command: uvicorn apps.main:app --host 0.0.0.0 --port 8000 --reload
+    command: python manage.py runserver --host 0.0.0.0 --port 8000
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-atb_user}:${POSTGRES_PASSWORD:-atb_password}@postgres:5432/${POSTGRES_DB:-atb_db}
       - SECRET_KEY=${SECRET_KEY}

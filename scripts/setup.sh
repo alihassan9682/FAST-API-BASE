@@ -10,7 +10,8 @@ echo "🚀 Setting up ATB Backend..."
 if [ ! -f .env ]; then
     echo "📝 Creating .env file from .env.example..."
     cp .env.example .env
-    echo "⚠️  Please update .env with your configuration!"
+    echo "⚠️  IMPORTANT: Update .env with your SECRET_KEY (required - project will not run without it)"
+    echo "   SECRET_KEY must be at least 32 characters long"
 else
     echo "✅ .env file already exists"
 fi
@@ -38,9 +39,10 @@ pip install -r requirements.txt
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "1. Update .env with your configuration"
-echo "2. Run 'make dev-up' to start services with Docker"
+echo "1. Update .env with your SECRET_KEY (REQUIRED - project will not run without it)"
+echo "2. Run 'python manage.py migrate' to apply database migrations"
+echo "3. Run 'python manage.py runserver' to start development server"
 echo "   OR"
-echo "3. Run 'make run-auth' and 'make run-product' to start services locally"
+echo "   Run 'make dev-up' to start with Docker"
 echo ""
 echo "For more information, see README.md"

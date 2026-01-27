@@ -1,30 +1,33 @@
-# ATB Backend - FastAPI Microservices Architecture
+# ATB Backend - FastAPI Django-like Architecture
 
-A scalable, production-ready FastAPI microservices backend with best practices, Docker support, and PostgreSQL database.
+A scalable, production-ready FastAPI backend with Django-like management commands, unified application structure, and PostgreSQL database.
 
 ## 🏗️ Architecture
 
-This project follows a microservices architecture with the following structure:
+This project follows a Django-like monolithic architecture with multiple apps, all running on a single port:
 
 ```
 ATB-BE/
-├── apps/                    # Microservices
+├── apps/                    # Application modules (like Django apps)
 │   ├── auth_service/        # Authentication & User Management
-│   └── product_service/     # Product Management (Example)
+│   ├── product_service/     # Product Management (Example)
+│   └── main.py              # Unified FastAPI application
 ├── core/                    # Shared core modules
 ├── shared/                  # Shared utilities and schemas
 ├── infrastructure/          # Docker, K8s, Terraform configs
 ├── tests/                   # Test suites
-└── alembic/                 # Database migrations
+├── alembic/                 # Database migrations
+└── manage.py                # Django-like management script
 ```
 
 ## 🚀 Features
 
-- **Microservices Architecture**: Independent, scalable services
+- **Django-like Management**: `manage.py` with `runserver`, `migrate`, `makemigrations` commands
+- **Unified Application**: All apps run on a single port (like Django)
 - **FastAPI**: Modern, fast web framework
 - **PostgreSQL**: Robust relational database
 - **Docker & Docker Compose**: Containerized development and deployment
-- **Alembic**: Database migrations
+- **Alembic Migrations**: Django-like migration system
 - **JWT Authentication**: Secure token-based auth
 - **Environment Variables**: Configuration management
 - **Health Checks**: Service monitoring endpoints
@@ -64,8 +67,8 @@ POSTGRES_USER=atb_user
 POSTGRES_PASSWORD=atb_password
 POSTGRES_DB=atb_db
 
-# Security - IMPORTANT: Change in production!
-SECRET_KEY=your-secret-key-here-change-in-production
+# Security - REQUIRED: Must be set (project will not run without it)
+SECRET_KEY=your-unique-secret-key-must-be-at-least-32-characters-long
 
 # CORS
 CORS_ORIGINS=http://localhost:3000,http://localhost:8000
@@ -85,12 +88,41 @@ pip install -r requirements.txt
 poetry install
 ```
 
-### 4. Run with Docker Compose (Recommended)
-
-This is the easiest way to get started:
+### 4. Run Database Migrations (Django-like)
 
 ```bash
-# Start all services
+# Create initial migration (auto-detect model changes)
+python manage.py makemigrations
+
+# Or with a custom message
+python manage.py makemigrations -m "Initial migration"
+
+# Apply migrations
+python manage.py migrate
+
+# Check migration status
+python manage.py showmigrations
+```
+
+### 5. Start Development Server (Django-like)
+
+#### Option A: Using manage.py (Recommended)
+
+```bash
+# Start server on default port 8000
+python manage.py runserver
+
+# Or with custom port
+python manage.py runserver --port 8080
+
+# Or using Make
+make runserver
+```
+
+#### Option B: Using Docker Compose
+
+```bash
+# Start all services (PostgreSQL + App)
 make dev-up
 
 # Or manually:
@@ -100,13 +132,9 @@ docker-compose up -d
 
 This will start:
 - PostgreSQL database
-- Auth Service (port 8000)
-- Product Service (port 8001)
-- Nginx reverse proxy (port 80)
+- Unified FastAPI application (all apps on port 8000)
 
-### 5. Run Locally (Without Docker)
-
-#### Start PostgreSQL
+#### Option C: Run Locally (Without Docker)
 
 Make sure PostgreSQL is running locally or use Docker:
 
@@ -118,43 +146,19 @@ docker run -d \
   -e POSTGRES_DB=atb_db \
   -p 5432:5432 \
   postgres:15-alpine
-```
 
-#### Run Database Migrations
-
-```bash
-# Create initial migration
-alembic revision --autogenerate -m "Initial migration"
-
-# Apply migrations
-alembic upgrade head
-```
-
-#### Start Services
-
-**Auth Service:**
-```bash
-make run-auth
-# Or manually:
-cd apps/auth_service
-uvicorn main:app --reload --port 8000
-```
-
-**Product Service:**
-```bash
-make run-product
-# Or manually:
-cd apps/product_service
-uvicorn main:app --reload --port 8001
+# Then start the server
+python manage.py runserver
 ```
 
 ## 📚 API Documentation
 
-Once services are running, access the interactive API documentation:
+Once the server is running, access the interactive API documentation:
 
-- **Auth Service**: http://localhost:8000/docs
-- **Product Service**: http://localhost:8001/docs
-- **Nginx (All Services)**: http://localhost/docs
+- **API Docs**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/health
+- **Auth Endpoints**: http://localhost:8000/api/v1/auth/
+- **Product Endpoints**: http://localhost:8000/api/v1/products/
 
 ## 🔐 Authentication
 
@@ -208,21 +212,47 @@ make test
 pytest tests/ -v
 ```
 
-## 📦 Available Make Commands
+## 📦 Available Commands
+
+### Django-like Management Commands
 
 ```bash
-make help                 # Show all available commands
-make install              # Install dependencies
-make dev-up              # Start development environment
-make dev-down            # Stop development environment
-make build               # Build Docker images
-make up                  # Start all services
-make down                # Stop all services
-make logs                # View service logs
-make clean               # Clean up Docker volumes
-make test                # Run tests
+# Development Server
+python manage.py runserver              # Start server on port 8000
+python manage.py runserver --port 8080 # Start on custom port
+python manage.py runserver --noreload  # Disable auto-reload
 
-# Migration commands (Django-like)
+# Migrations (Django-like)
+python manage.py makemigrations                    # Auto-detect changes
+python manage.py makemigrations -m "description"   # With message
+python manage.py makemigrations --empty            # Create empty migration
+python manage.py migrate                            # Apply all migrations
+python manage.py migrate --downgrade               # Rollback last migration
+python manage.py showmigrations                    # Show migration status
+python manage.py migrate-check                     # Check for pending migrations
+python manage.py migrate-history                    # Show migration history
+python manage.py migrate-current                    # Show current migration
+
+# Other Commands
+python manage.py shell        # Start Python shell with database
+python manage.py test         # Run tests
+```
+
+### Make Commands (Shortcuts)
+
+```bash
+make help                      # Show all available commands
+make install                   # Install dependencies
+make runserver                 # Start development server (Django-like)
+make runserver-port PORT=8080  # Start on custom port
+make dev-up                    # Start with Docker Compose
+make dev-down                  # Stop Docker Compose
+make build                     # Build Docker images
+make logs                      # View service logs
+make clean                     # Clean up Docker volumes
+make test                      # Run tests
+
+# Migration shortcuts (Django-like)
 make makemigrations msg="description"  # Create new migration
 make migrate                           # Apply all pending migrations
 make migrate-check                     # Check for pending migrations
@@ -232,12 +262,9 @@ make migrate-history                   # Show migration history
 make migrate-current                   # Show current migration
 
 # Code quality
-make format              # Format code with black
-make lint                # Lint code with flake8
-
-# Run services locally
-make run-auth            # Run auth service locally
-make run-product         # Run product service locally
+make format                   # Format code with black
+make lint                     # Lint code with flake8
+make shell                    # Start Python shell with database
 ```
 
 ## 🏗️ Project Structure
@@ -288,29 +315,29 @@ This project uses **Alembic** with a **Django-like** interface for easy migratio
 
 ```bash
 # Check for pending migrations
-python scripts/migrate.py check
+python manage.py migrate-check
 
 # Show all migrations and their status
-python scripts/migrate.py showmigrations
+python manage.py showmigrations
 
 # Create a new migration (auto-detects model changes)
-python scripts/migrate.py makemigrations -m "add user profile"
+python manage.py makemigrations -m "add user profile"
 
 # Apply migrations
-python scripts/migrate.py migrate
+python manage.py migrate
 ```
 
 ### Available Commands
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `makemigrations` | Create new migration (auto-detect changes) | `python scripts/migrate.py makemigrations -m "add email field"` |
-| `migrate` | Apply all pending migrations | `python scripts/migrate.py migrate` |
-| `showmigrations` | Show all migrations and their status | `python scripts/migrate.py showmigrations` |
-| `check` | Check for pending migrations | `python scripts/migrate.py check` |
-| `rollback` | Rollback migrations | `python scripts/migrate.py rollback -s 2` |
-| `history` | Show migration history | `python scripts/migrate.py history` |
-| `current` | Show current migration | `python scripts/migrate.py current` |
+| `makemigrations` | Create new migration (auto-detect changes) | `python manage.py makemigrations -m "add email field"` |
+| `migrate` | Apply all pending migrations | `python manage.py migrate` |
+| `showmigrations` | Show all migrations and their status | `python manage.py showmigrations` |
+| `migrate-check` | Check for pending migrations | `python manage.py migrate-check` |
+| `migrate --downgrade` | Rollback last migration | `python manage.py migrate --downgrade` |
+| `migrate-history` | Show migration history | `python manage.py migrate-history` |
+| `migrate-current` | Show current migration | `python manage.py migrate-current` |
 
 ### Using Make Commands
 
@@ -329,14 +356,14 @@ make migrate-current
 **Starting work:**
 ```bash
 git pull
-python scripts/migrate.py check
-python scripts/migrate.py migrate  # if needed
+python manage.py migrate-check
+python manage.py migrate  # if needed
 ```
 
 **After model changes:**
 ```bash
-python scripts/migrate.py makemigrations -m "what you changed"
-python scripts/migrate.py migrate
+python manage.py makemigrations -m "what you changed"
+python manage.py migrate
 git add alembic/versions/
 git commit -m "Add migration: what you changed"
 ```
@@ -382,12 +409,13 @@ make clean
 
 ## 🔒 Security Best Practices
 
-1. **Change SECRET_KEY**: Always use a strong, random secret key in production
+1. **SECRET_KEY is Required**: The project will not run without a valid SECRET_KEY (minimum 32 characters)
 2. **Use HTTPS**: Enable SSL/TLS in production
 3. **Environment Variables**: Never commit `.env` files
 4. **Database Credentials**: Use strong passwords
 5. **CORS**: Configure allowed origins properly
 6. **Token Expiration**: Adjust token expiration times as needed
+7. **Keep SECRET_KEY Secret**: Never share or commit your SECRET_KEY
 
 ## 📝 Environment Variables
 
